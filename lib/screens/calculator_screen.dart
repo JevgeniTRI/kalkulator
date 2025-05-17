@@ -6,7 +6,7 @@ import '../widgets/display_panel.dart';
 import '../db/database_helper.dart';
 import '../models/calculation_history.dart';
 import 'history_screen.dart';
-import 'converter_screen.dart'; // 👈 добавлен импорт
+import 'converter_screen.dart';
 
 class CalculatorScreen extends StatefulWidget {
   @override
@@ -15,7 +15,8 @@ class CalculatorScreen extends StatefulWidget {
 
 class _CalculatorScreenState extends State<CalculatorScreen> {
   String displayText = '0';
-  bool isResult = false;
+  String currentExpression = '';
+  bool lastInputWasOperator = false;
 
   final List<List<String>> buttons = [
     ['C', '±', '%', '÷'],
@@ -25,47 +26,89 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     ['0', '.', '='],
   ];
 
+  bool _isOperator(String val) => ['+', '-', '×', '÷'].contains(val);
+
   void onButtonTap(String value) async {
-    setState(() {
-      if (value == 'C') {
+    if (value == 'C') {
+      setState(() {
         displayText = '0';
-        isResult = false;
-      } else if (value == '=') {
-        try {
-          String expression = displayText.replaceAll('×', '*').replaceAll('÷', '/');
-          Parser p = Parser();
-          Expression exp = p.parse(expression);
-          ContextModel cm = ContextModel();
-          double result = exp.evaluate(EvaluationType.REAL, cm);
+        currentExpression = '';
+        lastInputWasOperator = false;
+      });
+      return;
+    }
 
-          final formattedResult = result.toString().endsWith('.0')
-              ? result.toStringAsFixed(0)
-              : result.toString();
+    if (value == '=') {
+      if (currentExpression.isEmpty) return;
+      try {
+        final result = _calculate(currentExpression);
+        final formatted = _formatResult(result);
 
-          final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
-          final fullExpression = '$displayText = $formattedResult';
+        final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+        final entry = CalculationHistory(
+          expression: '$currentExpression = $formatted',
+          timestamp: timestamp,
+        );
+        await DatabaseHelper().insertHistory(entry);
 
-          final entry = CalculationHistory(
-            expression: fullExpression,
-            timestamp: timestamp,
-          );
-          DatabaseHelper().insertHistory(entry);
-
-          displayText = formattedResult;
-          isResult = true;
-        } catch (e) {
+        setState(() {
+          displayText = formatted;
+          currentExpression = formatted;
+          lastInputWasOperator = false;
+        });
+      } catch (e) {
+        setState(() {
           displayText = 'Error';
-          isResult = true;
-        }
+          currentExpression = '';
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      if (_isOperator(value)) {
+        if (lastInputWasOperator) return; // запрет подряд операторов
+        currentExpression += value;
+        displayText = value;
+        lastInputWasOperator = true;
       } else {
-        if (isResult || displayText == '0' || displayText == 'Error') {
+        if (displayText == '0' || _isOperator(displayText)) {
           displayText = value;
-          isResult = false;
         } else {
           displayText += value;
         }
+
+        currentExpression += value;
+        lastInputWasOperator = false;
+
+        // авторасчёт после второго числа
+        final tokens = currentExpression.split(RegExp(r'(?<=[×÷+\-])|(?=[×÷+\-])'));
+        if (tokens.length >= 3 && _isOperator(tokens[tokens.length - 2])) {
+          try {
+            final partial = tokens.sublist(0, tokens.length - 1).join('');
+            final result = _calculate(partial);
+            displayText = _formatResult(result);
+            currentExpression = _formatResult(result) + tokens.last;
+          } catch (_) {
+            // до конца ввода – не мешаем
+          }
+        }
       }
     });
+  }
+
+  double _calculate(String expression) {
+    final parsed = expression.replaceAll('×', '*').replaceAll('÷', '/');
+    Parser p = Parser();
+    Expression exp = p.parse(parsed);
+    ContextModel cm = ContextModel();
+    return exp.evaluate(EvaluationType.REAL, cm);
+  }
+
+  String _formatResult(double result) {
+    return result.toString().endsWith('.0')
+        ? result.toStringAsFixed(0)
+        : result.toStringAsFixed(6).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
   }
 
   @override
