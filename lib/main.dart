@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 import 'screens/calculator_screen.dart';
-import 'package:flutter/foundation.dart';
 
 void main() {
-  runApp(CalculatorApp());
+  runApp(MyCalculatorApp());
 }
 
-class CalculatorApp extends StatelessWidget {
+class MyCalculatorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Visual Calculator',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
-      ),
+      title: 'Flutter Calculator',
+      theme: ThemeData.dark(), // Тёмная тема для чёрного AppBar
       home: CalculatorScreen(),
     );
   }

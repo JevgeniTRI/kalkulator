@@ -16,7 +16,7 @@ class CalculatorScreen extends StatefulWidget {
 class _CalculatorScreenState extends State<CalculatorScreen> {
   String displayText = '0';
   String currentExpression = '';
-  bool lastInputWasOperator = false;
+  bool justCalculated = false;
 
   final List<List<String>> buttons = [
     ['C', '±', '%', '÷'],
@@ -29,71 +29,57 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   bool _isOperator(String val) => ['+', '-', '×', '÷'].contains(val);
 
   void onButtonTap(String value) async {
-    if (value == 'C') {
-      setState(() {
+    setState(() {
+      if (value == 'C') {
         displayText = '0';
         currentExpression = '';
-        lastInputWasOperator = false;
-      });
-      return;
-    }
+        justCalculated = false;
+        return;
+      }
 
-    if (value == '=') {
-      if (currentExpression.isEmpty) return;
-      try {
-        final result = _calculate(currentExpression);
-        final formatted = _formatResult(result);
+      if (value == '=') {
+        if (currentExpression.isEmpty) return;
 
-        final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
-        final entry = CalculationHistory(
-          expression: '$currentExpression = $formatted',
-          timestamp: timestamp,
-        );
-        await DatabaseHelper().insertHistory(entry);
+        try {
+          final result = _calculate(currentExpression);
+          final formatted = _formatResult(result);
 
-        setState(() {
+          final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+          final entry = CalculationHistory(
+            expression: '$currentExpression = $formatted',
+            timestamp: timestamp,
+          );
+          DatabaseHelper().insertHistory(entry);
+
           displayText = formatted;
           currentExpression = formatted;
-          lastInputWasOperator = false;
-        });
-      } catch (e) {
-        setState(() {
+          justCalculated = true;
+        } catch (e) {
           displayText = 'Error';
           currentExpression = '';
-        });
+          justCalculated = false;
+        }
+        return;
       }
-      return;
-    }
 
-    setState(() {
       if (_isOperator(value)) {
-        if (lastInputWasOperator) return; // запрет подряд операторов
-        currentExpression += value;
-        displayText = value;
-        lastInputWasOperator = true;
-      } else {
-        if (displayText == '0' || _isOperator(displayText)) {
-          displayText = value;
-        } else {
-          displayText += value;
+        if (currentExpression.isEmpty && value != '-') return; // только минус в начале
+        if (_isOperator(currentExpression.characters.last)) return;
+
+        if (justCalculated) {
+          justCalculated = false; // продолжаем от результата
         }
-
-        currentExpression += value;
-        lastInputWasOperator = false;
-
-        // авторасчёт после второго числа
-        final tokens = currentExpression.split(RegExp(r'(?<=[×÷+\-])|(?=[×÷+\-])'));
-        if (tokens.length >= 3 && _isOperator(tokens[tokens.length - 2])) {
-          try {
-            final partial = tokens.sublist(0, tokens.length - 1).join('');
-            final result = _calculate(partial);
-            displayText = _formatResult(result);
-            currentExpression = _formatResult(result) + tokens.last;
-          } catch (_) {
-            // до конца ввода – не мешаем
-          }
+      } else {
+        if (justCalculated) {
+          // если вводим цифру после =, начинаем заново
+          currentExpression = '';
+          displayText = '';
+          justCalculated = false;
         }
       }
+
+      currentExpression += value;
+      displayText = currentExpression;
     });
   }
 
@@ -118,9 +104,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       appBar: AppBar(
         title: Text('Visual Calculator'),
         backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        iconTheme: IconThemeData(color: Colors.white),
+        actionsIconTheme: IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            icon: Icon(Icons.swap_horiz, color: Colors.white),
+            icon: Icon(Icons.swap_horiz),
             tooltip: 'Converter',
             onPressed: () {
               Navigator.push(
@@ -130,7 +119,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             },
           ),
           IconButton(
-            icon: Icon(Icons.history, color: Colors.white),
+            icon: Icon(Icons.history),
             tooltip: 'History',
             onPressed: () {
               Navigator.push(
